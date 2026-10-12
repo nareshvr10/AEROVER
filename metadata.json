@@ -1,0 +1,9 @@
+{
+  "name": "AEROVER — AI Search & Rescue System",
+  "description": "Aerial Emergency Reconnaissance, Observation, Verification and Emergency Response platform for professional mission command, search sectors, live camera, and detection review.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
