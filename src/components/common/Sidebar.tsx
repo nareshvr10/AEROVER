@@ -13,7 +13,8 @@ import {
   History, 
   BarChart3, 
   FileText, 
-  Cable, 
+  Cable,
+  RadioTower, 
   Settings as SettingsIcon, 
   Terminal,
   ChevronLeft,
@@ -36,6 +37,8 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'search_map', label: 'Search Map', icon: MapIcon, group: 'operations' },
 
   // 2. Sensors & AI
+    // Emergency cellular rescue planning
+  { id: 'emergency_cellular', label: 'Emergency Cellular', icon: RadioTower, group: 'sensors' },
   { id: 'signal_observations', label: 'Signal Observations', icon: Radio, group: 'sensors' },
   { id: 'ai_detection', label: 'AI Detection', icon: Scan, group: 'sensors' },
   { id: 'drone_status', label: 'Drone Status', icon: Cpu, group: 'sensors' },
@@ -54,6 +57,13 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'device_connections', label: 'Device Connections', icon: Cable, group: 'system' },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, group: 'system' },
   { id: 'system_diagnostics', label: 'System Diagnostics', icon: Terminal, group: 'system' },
+
+  {
+  id: "rescue_portal",
+  label: "Rescue Portal",
+  icon: RadioTower,
+  group: "sensors",
+},
 ];
 
 interface SidebarProps {

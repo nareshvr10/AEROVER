@@ -36,6 +36,8 @@ import { ReportsPage } from './pages/ReportsPage';
 import { DeviceConnectionsPage } from './pages/DeviceConnectionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SystemDiagnosticsPage } from './pages/SystemDiagnosticsPage';
+import { EmergencyCellularPage } from './pages/EmergencyCellularPage';
+import RescuePortalPage from "./pages/RescuePortalPage";
 
 export default function App() {
   const [activePage, setActivePage] = useState<string>('overview');
@@ -407,6 +409,12 @@ export default function App() {
           {activePage === 'system_diagnostics' && (
             <SystemDiagnosticsPage />
           )}
+          
+          {activePage === 'emergency_cellular' && (
+            <EmergencyCellularPage />
+          )}
+          {activePage === "rescue_portal" && <RescuePortalPage />}
+
         </main>
       </div>
 

@@ -642,4 +642,64 @@ export class StorageService {
     this.setItem(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
     this.setItem(STORAGE_KEYS.TELEMETRY, DEFAULT_TELEMETRY);
   }
+
+  static createMission(
+    name: string,
+    type: Mission['type'],
+    priority: Mission['priority'],
+    description: string,
+    assignedOperator: string
+  ): Mission {
+    const now = new Date();
+    const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const id = `AEROVER-SAR-${datePart}-${now.getTime().toString().slice(-5)}`;
+
+    const mission: Mission = {
+      id,
+      name: name.trim(),
+      type,
+      priority,
+      status: 'planned',
+      description: description.trim(),
+      searchAreaBoundary: [],
+      sectors: [],
+      waypoints: [],
+      assignedOperator: assignedOperator.trim() || 'Unassigned',
+      assignedTeamIds: [],
+      lastUpdated: now.toISOString(),
+      notes: '',
+      isSimulatedData: false
+    };
+
+    this.saveMission(mission);
+    return mission;
+  }
+
+  static updateMissionStatus(
+    id: string,
+    status: Mission['status']
+  ): Mission | undefined {
+    const mission = this.getMissionById(id);
+    if (!mission) return undefined;
+
+    const now = new Date().toISOString();
+
+    mission.status = status;
+    mission.lastUpdated = now;
+
+    if (status === 'active' && !mission.startTime) {
+      mission.startTime = now;
+    }
+
+    if (status === 'completed') {
+      mission.completionTime = now;
+    }
+
+    if (status === 'active') {
+      this.setActiveMissionId(id);
+    }
+
+    this.saveMission(mission);
+    return mission;
+  }
 }

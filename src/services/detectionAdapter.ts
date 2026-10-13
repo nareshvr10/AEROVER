@@ -1,4 +1,5 @@
-import { AIDetection, DetectionClass } from '../types';
+
+import { AIDetection } from '../types';
 import { StorageService } from './storage';
 
 export interface VisionModelStatus {
@@ -12,13 +13,53 @@ export interface VisionModelStatus {
   isFallbackActive: boolean;
 }
 
+interface ModelHealthResponse {
+  model?: string;
+  version?: string;
+}
+
+interface ModelDetectionResponse {
+  detections?: Array<{
+    id?: string;
+    missionId?: string;
+    mission_id?: string;
+    timestamp?: string;
+    className?: string;
+    class_name?: string;
+    confidence: number;
+    boundingBox?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    bbox?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    imageSnapshotUrl?: string;
+    modelName?: string;
+    model_name?: string;
+    modelVersion?: string;
+    model_version?: string;
+    status?: 'pending' | 'confirmed' | 'rejected';
+    notes?: string;
+  }>;
+}
+
+// Change this URL if your AI inference server uses another address.
+const DEFAULT_ENDPOINT = 'http://localhost:5000';
+
 export class DetectionAdapter {
   private static status: VisionModelStatus = {
     isConnected: false,
     modelName: 'YOLOv8-SAR-Recon',
-    version: '8.2.0-fp16',
-    endpointUrl: 'http://localhost:5000/v1/detect',
-    errorMessage: 'No local edge inference server detected at port 5000. Standby adapter active.',
+    version: 'offline',
+    endpointUrl: DEFAULT_ENDPOINT,
+    errorMessage:
+      'AI inference server is offline. Start the server before running detection.',
     isFallbackActive: true
   };
 
@@ -26,88 +67,194 @@ export class DetectionAdapter {
     return { ...this.status };
   }
 
-  static async pingModelServer(endpoint?: string): Promise<VisionModelStatus> {
-    const url = endpoint || this.status.endpointUrl;
+  private static normalizeBaseUrl(endpoint?: string): string {
+    const raw = (
+      endpoint || this.status.endpointUrl || DEFAULT_ENDPOINT
+    )
+      .trim()
+      .replace(/\/+$/, '');
+
+    return raw.replace(/\/(health|predict|detect)$/i, '');
+  }
+
+  static async pingModelServer(
+    endpoint?: string
+  ): Promise<VisionModelStatus> {
+    const baseUrl = this.normalizeBaseUrl(endpoint);
     const start = performance.now();
+
     try {
-      const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        this.status = {
-          isConnected: true,
-          modelName: data.model || 'YOLOv8-SAR-Recon',
-          version: data.version || '8.2.0',
-          latencyMs: Math.round(performance.now() - start),
-          lastPingTime: new Date().toISOString(),
-          endpointUrl: url,
-          isFallbackActive: false
-        };
-      } else {
-        throw new Error(`HTTP ${res.status}: Server reported unhealthy`);
+      const response = await fetch(`${baseUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-    } catch (e: any) {
+
+      const data = (await response.json().catch(() => ({}))) as
+        ModelHealthResponse;
+
+      this.status = {
+        isConnected: true,
+        modelName: data.model || 'YOLOv8-SAR-Recon',
+        version: data.version || 'unknown',
+        latencyMs: Math.round(performance.now() - start),
+        lastPingTime: new Date().toISOString(),
+        endpointUrl: baseUrl,
+        isFallbackActive: false
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown connection error';
+
       this.status = {
         isConnected: false,
         modelName: 'YOLOv8-SAR-Recon',
-        version: '8.2.0-standby',
-        endpointUrl: url,
-        errorMessage: `Connection failed: ${e.message || 'Server unreachable'}. Verify edge server or container is running.`,
+        version: 'offline',
+        endpointUrl: baseUrl,
+        errorMessage:
+          `AI server connection failed: ${message}. ` +
+          'Check that the server is running and that CORS allows this dashboard.',
         isFallbackActive: true
       };
     }
+
     return { ...this.status };
   }
 
-  /**
-   * Run test or live inference on an image snapshot data URL.
-   * If remote edge model is offline, can run prototype test inference with clear simulation flags.
-   */
-  static async runInference(imageDataUrl: string, missionId: string): Promise<AIDetection[]> {
-    if (this.status.isConnected) {
-      try {
-        const res = await fetch(`${this.status.endpointUrl}/predict`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: imageDataUrl, mission_id: missionId })
-        });
-        if (res.ok) {
-          const results = await res.json();
-          return results.detections.map((d: any) => ({
-            ...d,
-            isSimulated: false
-          }));
-        }
-      } catch (err) {
-        console.warn('Live inference failed, falling back to simulated test run:', err);
-      }
+  static async runInference(
+    imageDataUrl: string,
+    missionId: string
+  ): Promise<AIDetection[]> {
+    if (!imageDataUrl.startsWith('data:image/')) {
+      throw new Error(
+        'A valid image snapshot is required before running AI inference.'
+      );
     }
 
-    // In prototype/simulation mode: Generate a verified test detection record explicitly marked as simulated
-    const testClasses: DetectionClass[] = ['person', 'vehicle', 'smoke'];
-    const selectedClass = testClasses[Math.floor(Math.random() * testClasses.length)];
-    const confidence = parseFloat((0.75 + Math.random() * 0.22).toFixed(2));
+    const baseUrl = this.normalizeBaseUrl();
 
-    const simulatedDetection: AIDetection = {
-      id: `DET-TEST-${Date.now().toString().slice(-4)}`,
-      missionId,
-      timestamp: new Date().toISOString(),
-      className: selectedClass,
-      confidence,
-      boundingBox: {
-        x: 0.3 + Math.random() * 0.3,
-        y: 0.25 + Math.random() * 0.3,
-        width: 0.15 + Math.random() * 0.1,
-        height: 0.2 + Math.random() * 0.1
-      },
-      imageSnapshotUrl: imageDataUrl,
-      modelName: `${this.status.modelName} (Prototype Test)`,
-      modelVersion: this.status.version,
-      status: 'pending',
-      notes: `Test candidate ${selectedClass} generated during camera optical snapshot test. Verified simulation fixture.`,
-      isSimulated: true
+    if (!this.status.isConnected) {
+      await this.pingModelServer(baseUrl);
+    }
+
+    if (!this.status.isConnected) {
+      throw new Error(
+        this.status.errorMessage ||
+          'AI server is offline. No detection was performed.'
+      );
+    }
+
+    const start = performance.now();
+
+    let response: Response;
+
+    try {
+      response = await fetch(`${baseUrl}/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image: imageDataUrl,
+          mission_id: missionId
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown network error';
+
+      this.status = {
+        ...this.status,
+        isConnected: false,
+        isFallbackActive: true,
+        errorMessage: `Inference request failed: ${message}`
+      };
+
+      throw new Error(this.status.errorMessage);
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Inference API returned HTTP ${response.status}. No detections were saved.`
+      );
+    }
+
+    const payload =
+      (await response.json()) as ModelDetectionResponse;
+
+    if (!Array.isArray(payload.detections)) {
+      throw new Error(
+        'Invalid inference response: expected a detections array.'
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const detections: AIDetection[] = payload.detections.map(
+      (item, index) => {
+        const className = item.className || item.class_name;
+        const box = item.boundingBox || item.bbox;
+
+        if (!className || !Number.isFinite(item.confidence)) {
+          throw new Error(
+            `Invalid detection data at index ${index}.`
+          );
+        }
+
+        if (
+          !box ||
+          ![box.x, box.y, box.width, box.height].every(Number.isFinite)
+        ) {
+          throw new Error(
+            `Invalid bounding box at detection index ${index}.`
+          );
+        }
+
+        const detection = {
+          id: item.id || `DET-${Date.now()}-${index}`,
+          missionId: item.missionId || item.mission_id || missionId,
+          timestamp: item.timestamp || now,
+          className,
+          confidence: Math.max(0, Math.min(1, item.confidence)),
+          boundingBox: {
+            x: Math.max(0, Math.min(1, box.x)),
+            y: Math.max(0, Math.min(1, box.y)),
+            width: Math.max(0, Math.min(1, box.width)),
+            height: Math.max(0, Math.min(1, box.height))
+          },
+          imageSnapshotUrl: item.imageSnapshotUrl || imageDataUrl,
+          modelName:
+            item.modelName ||
+            item.model_name ||
+            this.status.modelName,
+          modelVersion:
+            item.modelVersion ||
+            item.model_version ||
+            this.status.version,
+          status: item.status || 'pending',
+          notes:
+            item.notes || 'Returned by the connected inference server.',
+          isSimulated: false
+        } as AIDetection;
+
+        StorageService.saveDetection(detection);
+        return detection;
+      }
+    );
+
+    this.status = {
+      ...this.status,
+      isConnected: true,
+      latencyMs: Math.round(performance.now() - start),
+      lastPingTime: new Date().toISOString(),
+      isFallbackActive: false,
+      errorMessage: undefined
     };
 
-    StorageService.saveDetection(simulatedDetection);
-    return [simulatedDetection];
+    return detections;
   }
 }

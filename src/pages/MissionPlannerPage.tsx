@@ -47,6 +47,19 @@ export const MissionPlannerPage: React.FC<MissionPlannerPageProps> = ({
   const [formDescription, setFormDescription] = useState('');
   const [formOperator, setFormOperator] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  
+  const generateMissionId = (): string => {
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let id = '';
+
+    do {
+      const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+      id = `AEROVER-SAR-${datePart}-${suffix}`;
+    } while (missions.some(m => m.id === id));
+
+    return id;
+  };
+
 
   const filteredMissions = missions.filter(m => {
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.id.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -81,19 +94,24 @@ export const MissionPlannerPage: React.FC<MissionPlannerPageProps> = ({
     setIsModalOpen(true);
   };
 
+  
   const handleDuplicate = (mission: Mission) => {
+    const now = new Date().toISOString();
+
     const duplicated: Mission = {
       ...mission,
-      id: `MSN-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      id: generateMissionId(),
       name: `${mission.name} (Copy)`,
       status: 'planned',
       startTime: undefined,
       completionTime: undefined,
-      lastUpdated: new Date().toISOString(),
-      isSimulatedData: true
+      lastUpdated: now,
+      isSimulatedData: mission.isSimulatedData ?? false
     };
+
     onSaveMission(duplicated);
   };
+
 
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,34 +133,36 @@ export const MissionPlannerPage: React.FC<MissionPlannerPageProps> = ({
         lastUpdated: new Date().toISOString()
       };
       onSaveMission(updated);
+    
     } else {
+      const now = new Date().toISOString();
+
       const newMission: Mission = {
-        id: `MSN-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+        id: generateMissionId(),
         name: formName.trim(),
         type: formType,
         priority: formPriority,
         status: formStatus,
         description: formDescription.trim(),
-        searchAreaBoundary: [
-          { lat: 46.8523, lng: -121.7603 },
-          { lat: 46.8654, lng: -121.7451 },
-          { lat: 46.8582, lng: -121.7225 },
-          { lat: 46.8410, lng: -121.7380 }
-        ],
+
+        // Coordinates are added later when a real search area is configured.
+        searchAreaBoundary: [],
         sectors: [],
-        waypoints: [
-          { id: `WP-${Date.now()}-1`, order: 1, name: 'Staging Area (ICP)', coordinates: { lat: 46.8425, lng: -121.7410 } }
-        ],
-        assignedOperator: formOperator.trim() || 'Commander (AEROVER-OPS)',
-        assignedTeamIds: teams.slice(0, 2).map(t => t.id),
-        startTime: formStatus === 'active' ? new Date().toISOString() : undefined,
-        lastUpdated: new Date().toISOString(),
+        waypoints: [],
+
+        assignedOperator: formOperator.trim() || 'Unassigned',
+        assignedTeamIds: [],
+        startTime: formStatus === 'active' ? now : undefined,
+        completionTime: formStatus === 'completed' ? now : undefined,
+        lastUpdated: now,
         notes: formNotes.trim(),
-        isSimulatedData: true
+        isSimulatedData: false
       };
+
       onSaveMission(newMission);
       onSelectMission(newMission.id);
     }
+
 
     setIsModalOpen(false);
   };
